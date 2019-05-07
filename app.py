@@ -1,5 +1,5 @@
 import sys
-from os import walk
+import os
 import imghdr
 import csv
 import argparse
@@ -71,10 +71,10 @@ def label(id):
 #     app.config["HEAD"] = app.config["HEAD"] - 1
 #     return redirect(url_for('tagger'))
 
-@app.route('/image/<f>')
-def images(f):
+@app.route('/image/<path:relpath>')
+def images(relpath):
     images = app.config['IMAGES']
-    return send_file(images + f)
+    return send_file(images + '/' + relpath)
 
 
 if __name__ == "__main__":
@@ -87,11 +87,15 @@ if __name__ == "__main__":
          directory += "/"
     app.config["IMAGES"] = directory
     app.config["LABELS"] = []
-    files = None
-    for (dirpath, dirnames, filenames) in walk(app.config["IMAGES"]):
-        files = filenames
-        break
-    if files == None:
+    files = []
+    for dirpath, dirs, filenames in os.walk(app.config["IMAGES"]):
+        path = dirpath.split(os.sep)
+        for f in filenames:
+            fullpath = os.sep.join(path + [f])
+            relpath  = os.path.relpath(fullpath, app.config["IMAGES"])
+            files += [relpath]
+
+    if not files:
         print("No files")
         exit()
     app.config["FILES"] = files
