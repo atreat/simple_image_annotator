@@ -3,11 +3,13 @@ import os
 import imghdr
 import csv
 import argparse
+import json
 
 from flask import Flask, redirect, url_for, request
 from flask import render_template
 from flask import send_file
 
+from lib.annotate import Image, Annotation
 
 app = Flask(__name__)
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
@@ -25,18 +27,26 @@ def tagger():
 
 @app.route('/next')
 def next():
-    image = app.config["FILES"][app.config["HEAD"]]
+
+    # grab current image and move HEAD to next
+    image = Image(app.config["FILES"][app.config["HEAD"]])
     app.config["HEAD"] = app.config["HEAD"] + 1
-    with open(app.config["OUT"],'a') as f:
-        for label in app.config["LABELS"]:
-            f.write(image + "," +
-            label["id"] + "," +
-            label["name"] + "," +
-            str(round(float(label["xMin"]))) + "," +
-            str(round(float(label["xMax"]))) + "," +
-            str(round(float(label["yMin"]))) + "," +
-            str(round(float(label["yMax"]))) + "\n")
+
+    # write annotations for image
+    for label in app.config["LABELS"]:
+        width = float(label["xMax"]) - float(label["xMin"])
+        height = float(label["yMax"]) - float(label["yMin"])
+        x = round(float(label["xMin"]) + (width / 2))
+        y = round(float(label["yMin"]) + (height / 2))
+
+        image.add(Annotation(label["name"], center = (x,y), size = (width, height)))
+
+    app.config["ANNOTATIONS"].append(image)
     app.config["LABELS"] = []
+
+    with open(app.config["OUT"],'w') as f:
+        f.write(json.dumps(list(map(Image.dictionary, app.config["ANNOTATIONS"]))))
+
     return redirect(url_for('tagger'))
 
 @app.route("/bye")
@@ -66,11 +76,6 @@ def label(id):
     app.config["LABELS"][int(id) - 1]["name"] = name
     return redirect(url_for('tagger'))
 
-# @app.route('/prev')
-# def prev():
-#     app.config["HEAD"] = app.config["HEAD"] - 1
-#     return redirect(url_for('tagger'))
-
 @app.route('/image/<path:relpath>')
 def images(relpath):
     images = app.config['IMAGES']
@@ -87,6 +92,7 @@ if __name__ == "__main__":
          directory += "/"
     app.config["IMAGES"] = directory
     app.config["LABELS"] = []
+    app.config["ANNOTATIONS"] = []
     files = []
     for dirpath, dirs, filenames in os.walk(app.config["IMAGES"]):
         path = dirpath.split(os.sep)
@@ -101,10 +107,9 @@ if __name__ == "__main__":
     app.config["FILES"] = files
     app.config["HEAD"] = 0
     if args.out == None:
-        app.config["OUT"] = "out.csv"
+        app.config["OUT"] = "out.json"
     else:
         app.config["OUT"] = args.out
+
     print(files)
-    with open("out.csv",'w') as f:
-        f.write("image,id,name,xMin,xMax,yMin,yMax\n")
     app.run(debug="True")
